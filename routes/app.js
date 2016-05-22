@@ -61,8 +61,8 @@ module.exports = (router) => {
       let usr_id = req.body.usr_id;
       let app_id = `${app}:${usr_id}`;
 
-      //if exist remove
-      //if running stoped
+      //if exist remove on disk
+      //if running on pm2 remove
       removeApp(app_id)
       .then(o => pm2Call('-remove', app_id), e => log(e))
       .then(o => createProject(app_id))
