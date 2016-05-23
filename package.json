@@ -6,6 +6,7 @@
   "dependencies": {
     "async": "^2.0.0-rc.5",
     "body-parser": "^1.15.1",
+    "express": "^4.13.4",
     "jade": "^1.11.0",
     "mongodb": "^2.1.19",
     "morgan": "^1.7.0",
@@ -13,8 +14,8 @@
   },
   "devDependencies": {},
   "scripts": {
-		"dev": "NODE_ENV=devel nodemon app.js",
-		"start": "NODE_ENV=prod forever app.js",
+    "dev": "NODE_ENV=devel nodemon app.js",
+    "start": "NODE_ENV=prod forever app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",

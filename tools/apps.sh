@@ -2,6 +2,7 @@ cmd=`which pm2`
 action=$1
 app=$2
 id=$3
+mongodb_url=$4
 
 function run(){
   port=$(./tools/freeport.sh 8080 1)
@@ -11,7 +12,12 @@ function run(){
     exit 1
   fi
 
-  $cmd start $app --name $id -x -- --prod --port $port > /dev/null
+  $cmd start $app \
+    --name $id -x -- \
+    --prod \
+    --port $port \
+    --MONGODB_URL=$mongodb_url > /dev/null
+
   echo $port
   exit $?
 }
@@ -48,6 +54,7 @@ fi
 case $action in
   -stop) pm2call "stop";;
   -start) pm2call "start";;
+  -restart) pm2call "restart";;
   -remove) pm2call "delete";;
   -h|--help) usage;;
   -r|-run) run;;

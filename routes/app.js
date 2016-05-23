@@ -11,7 +11,8 @@ const APPS_DIR = '/tmp/';
 const PKG_CACHE = path.join(__dirname + '/../apibase/cache_pkg');
 const API_BASE = path.join(__dirname + '/../apibase/sails');
 const PM2 = path.join(__dirname + '/../tools/apps.sh');
-
+const MONGODB_URL = 'mongodb://localhost:27017/';
+const PM2_ACTIONS = ['-stop','-run','-start','-remove','-restart'];
 
 
 const SAILS = {
@@ -26,17 +27,20 @@ module.exports = (router) => {
     res.send('respond with a resource');
   });
 
+
+
   /*
    * Stop or Start pm2 sails app
    *
    */
-  router.post(/(stop|start|run)/, validate('app_name','usr_id'), (req, res) => {
+  router.post(/(stop|start|restart|run)/, validate('app_name','usr_id'), (req, res) => {
       let action = path.basename(req.originalUrl);
       let app = req.body.app_name;
       let usr_id = req.body.usr_id;
-      let app_id=`${app}:${usr_id}`;
 
-      pm2Call(`-${action}`, app_id).then(o => res.json(o))
+      let opts = new PM2Options(`${app}:${usr_id}`);
+
+      pm2Call(`-${action}`, opts).then(o => res.json(o))
       .catch(err => {
         log(`Error on ${action} app `, err.toString());
         res.status(500).json({ err: 'INTERNAL_ERROR' });
@@ -44,12 +48,15 @@ module.exports = (router) => {
   });
 
 
+
   /*
    * Remove sails app
    */
   router.delete('/:id', (req, res) => {
       removeApp(req.params.id).then(o => res.json({ res: o}));
+      //remove from pm2 and mongo
   });
+
 
 
   /*
@@ -59,19 +66,20 @@ module.exports = (router) => {
   router.post('/', validate('app_name', 'usr_id'), (req, res, next) => {
       let app = req.body.app_name;
       let usr_id = req.body.usr_id;
-      let app_id = `${app}:${usr_id}`;
+
+      let opts = new PM2Options(`${app}:${usr_id}`);
+      log(opts);
 
       //if exist remove on disk
       //if running on pm2 remove
-      removeApp(app_id)
-      .then(o => pm2Call('-remove', app_id), e => log(e))
-      .then(o => createProject(app_id))
-      //.then(o => installPkgs(app_id))
+      removeApp(opts.app_id)
+      .then(o => pm2Call('-remove', opts), e => log(e))
+      .then(o => createProject(opts.app_id))
       .then(o => getModels(req.db))
-      .then(o => createModels(app_id, o))
-      .then(o => createControllers(app_id, o))
+      .then(o => createModels(opts.app_id, o))
+      .then(o => createControllers(opts.app_id, o))
       //.then(o => addNginxConf(app_id))
-      .then(o => pm2Call('-run', app_id))
+      .then(o => pm2Call('-run', opts))
       .then(o => {
           req.db.close();
           res.json({ port: o });
@@ -90,11 +98,14 @@ module.exports = (router) => {
 
   });
 
+
+
   /*
    *
    * Generic body request validation
    *
    * @param {arguments} fields multiple body fields
+   *
    * @return error or next express function
    *
    */
@@ -120,6 +131,7 @@ module.exports = (router) => {
    * Function create new sails app
    *
    * @param app app name
+   *
    * @return Promise Object
    *
    */
@@ -128,7 +140,7 @@ module.exports = (router) => {
 
     let DEST = APPS_DIR + app;
 
-    return callCMD(`cp -r ${API_BASE} ${DEST}`);
+    return callCMD(`cp -a ${API_BASE} ${DEST}`);
   };
 
 
@@ -145,10 +157,13 @@ module.exports = (router) => {
     return callCMD(`ln -s ${PKG_CACHE} ${dest}`);
   }
 
+
+
   /*
    * Function get all models configured from admin platform
    *
    * @param {Object} db is the mongo connection
+   *
    * @return Promise Object
    *
    */
@@ -164,11 +179,14 @@ module.exports = (router) => {
     });
   }
 
+
+
   /*
    * Function create sails.js models
    *
    * @param {String} app_id the new app
    * @param {Array} models the models db
+   *
    * @return Promise Object
    *
    */
@@ -184,6 +202,7 @@ module.exports = (router) => {
           });
       });
   }
+
 
 
   function createModel(app_id, m, cb){
@@ -203,6 +222,10 @@ module.exports = (router) => {
       .then(o => cb())
       .catch(cb);
   }
+
+
+
+
 
   /*
    * Function create sails.js models
@@ -246,20 +269,25 @@ module.exports = (router) => {
    *
    * @param {String} action is the action to pm2
    * @param {String} app_id the folder name + usr_id
+   * @param {Object} opts
+   *
+   *    {
+   *      app_id: @param {String} appname + usr_id
+   *      script: @param {String} sails js main script app
+   *      db_url: @param {String} mongodb://localhost:27017/test
+   *    }
    *
    * @return {Object} Promise
    */
-  function pm2Call(action, app_id){
-    if (['-stop','-run','-start','-remove'].indexOf(action) < 0){
+  function pm2Call(action, opts){
+    if (PM2_ACTIONS.indexOf(action) < 0 || !opts.app_id){
       throw new Error('INVALID_PM2_USAGE_ACTION');
     }
 
-    let file = '';
-    if (action == '-run'){
-      file = APPS_DIR + app_id + '/app.js';
-    }
+    opts.script=opts.script || '';
+    opts.db_url=opts.db_url || '';
 
-    return callCMD(`${PM2} ${action} ${file} ${app_id}`);
+    return callCMD(`${PM2} ${action} ${opts.script} ${opts.app_id} ${opts.db_url}`);
   }
 
 
@@ -295,6 +323,13 @@ module.exports = (router) => {
         }
       });
     });
+  }
+
+
+  function PM2Options(app_id){
+    this.app_id =  app_id;
+    this.script = `${APPS_DIR}${app_id}/app.js`;
+    this.db_url = `${MONGODB_URL}${app_id}`;
   }
 
   return router;
